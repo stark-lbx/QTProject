@@ -17,7 +17,8 @@ SOURCES += \
     client.cpp \
     protocol.cpp \
     reshandler.cpp \
-    sharefile.cpp
+    sharefile.cpp \
+    uploader.cpp
 
 HEADERS += \
     chat.h \
@@ -27,7 +28,8 @@ HEADERS += \
     index.h \
     protocol.h \
     reshandler.h \
-    sharefile.h
+    sharefile.h \
+    uploader.h
 
 FORMS += \
     chat.ui \

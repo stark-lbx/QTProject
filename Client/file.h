@@ -48,6 +48,7 @@ private slots:
 
     void on_share_PB_clicked();
 
+    void errorSlot(QString error);
 private:
     Ui::File *ui;
 };

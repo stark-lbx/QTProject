@@ -128,7 +128,7 @@ void Client::handleMsg(std::unique_ptr<PDU> pdu){
 
 
 //发送消息
-void Client::sendMsg(std::unique_ptr<PDU> pdu){
+void Client::sendMsg(std::shared_ptr<PDU> pdu){
     if(pdu.get()==nullptr)return;
 
     m_tcpSocket.write((char*)pdu.get(),pdu->uiPDULen);

@@ -27,7 +27,7 @@ public:
 
     void loadConfig();
 
-    void sendMsg(std::unique_ptr<PDU> pdu);
+    void sendMsg(std::shared_ptr<PDU> pdu);
     std::unique_ptr<PDU> readMsg();
     void handleMsg(std::unique_ptr<PDU> pdu);
     void recvMsg();

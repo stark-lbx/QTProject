@@ -1,6 +1,7 @@
 #include "client.h"
 #include "file.h"
 #include "ui_file.h"
+#include "uploader.h"
 
 #include <QDir>
 #include <QFileDialog>
@@ -68,35 +69,48 @@ void File::flushFiles()
 
 void File::uploadFile()
 {
-    //创建QFile对象并打开
-    QFile file(m_strUploadFilePath);
-    if(!file.open(QIODevice::ReadOnly)){
-        QMessageBox::warning(this,"上传文件","上传失败");
-        return;
-    }
+    /*
+     * 优化前：使用阻塞式IO，当前线程write完成后，客户端才能响应其它事件
+     * 优化后：多线程非阻塞IO，开启一个后台线程执行上传文件的任务，客户端去执行其它任务
+     */
 
-    std::unique_ptr<PDU> pdu = mkPDU(4096);
-    pdu->uiMsgType = ENUM_MSG_TYPE_UPLOAD_FILE_DATA_REQUEST;
-    while(true){
-        qint64 ret = file.read(pdu->caData,4096);
-        if(ret==0)break;
-        if(ret<0){
-            QMessageBox::warning(this,"上传文件","读取文件失败");
-            break;
-        }
-        pdu->uiMsgLen = ret;
-        pdu->uiPDULen = ret + sizeof(PDU);
-        Client::getInstance().m_tcpSocket.write((char*)pdu.get(),pdu->uiPDULen);
+    Uploader* uploader = new Uploader(m_strUploadFilePath);
+    connect(uploader, &Uploader::errorSignal,this, &File::errorSlot);
+    connect(uploader, &Uploader::sendPDU, &Client::getInstance(), &Client::sendMsg);
+    connect(uploader, &Uploader::finished,this,[this](){
+        this->on_flush_PB_clicked();
+    });
+    uploader->start();
 
-        qDebug()<<"file::uploadfile:"
-                 <<"\n\t pdu->uiMsgType: "<<pdu->uiMsgType
-                 <<"\n\t pdu->uiPDULen: "<<pdu->uiPDULen
-                 <<"\n\t pdu->uiMsgLen: "<<pdu->uiMsgLen
-                 <<"\n\t pdu->caData: "<<pdu->caData
-                 <<"\n\t pdu->caData+32: "<<pdu->caData+32
-                 <<"\n\t pdu->caMsg: "<<pdu->caMsg;
-    }
-    QMessageBox::information(this,"上传文件","文件上传完毕");
+    // //创建QFile对象并打开
+    // QFile file(m_strUploadFilePath);
+    // if(!file.open(QIODevice::ReadOnly)){
+    //     QMessageBox::warning(this,"上传文件","上传失败");
+    //     return;
+    // }
+
+    // std::unique_ptr<PDU> pdu = mkPDU(4096);
+    // pdu->uiMsgType = ENUM_MSG_TYPE_UPLOAD_FILE_DATA_REQUEST;
+    // while(true){
+    //     qint64 ret = file.read(pdu->caData,4096);
+    //     if(ret==0)break;
+    //     if(ret<0){
+    //         QMessageBox::warning(this,"上传文件","读取文件失败");
+    //         break;
+    //     }
+    //     pdu->uiMsgLen = ret;
+    //     pdu->uiPDULen = ret + sizeof(PDU);
+    //     Client::getInstance().m_tcpSocket.write((char*)pdu.get(),pdu->uiPDULen);
+
+    //     qDebug()<<"file::uploadfile:"
+    //              <<"\n\t pdu->uiMsgType: "<<pdu->uiMsgType
+    //              <<"\n\t pdu->uiPDULen: "<<pdu->uiPDULen
+    //              <<"\n\t pdu->uiMsgLen: "<<pdu->uiMsgLen
+    //              <<"\n\t pdu->caData: "<<pdu->caData
+    //              <<"\n\t pdu->caData+32: "<<pdu->caData+32
+    //              <<"\n\t pdu->caMsg: "<<pdu->caMsg;
+    // }
+    // QMessageBox::information(this,"上传文件","文件上传完毕");
 }
 
 void File::updateFiles_LW(QList<FileInfo *> pFileList)
@@ -276,5 +290,10 @@ void File::on_share_PB_clicked()
         m_pShareFile->show();
     }
 
+}
+
+void File::errorSlot(QString error)
+{
+    QMessageBox::information(this,"提示",error);
 }
 
