@@ -10,7 +10,7 @@ class OperateDB : public QObject
 public:
     ~OperateDB();
     static OperateDB& getInstance();
-    void Connect();
+    // void Connect();
 
     int handleRegist(const char* uid,const char* pwd);//注册
     int handleLogin(const char* uid, const char* pwd);//登录
@@ -22,7 +22,8 @@ public:
 
     int handleDelFriend(const char* curName,const char* tarName);//删除好友
 private:
-    QSqlDatabase m_db;//数据库对象
+    // QSqlDatabase m_db;//数据库对象
+    QSqlDatabase getDatabaseConnection();//从连接池获取一个连接
 
     explicit OperateDB(QObject *parent = nullptr);
 

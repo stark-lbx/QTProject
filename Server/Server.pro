@@ -9,6 +9,7 @@ CONFIG += c++17
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    dbconnectionpool.cpp \
     main.cpp \
     mytcpserver.cpp \
     mytcpsocket.cpp \
@@ -18,6 +19,7 @@ SOURCES += \
     server.cpp
 
 HEADERS += \
+    dbconnectionpool.h \
     mytcpserver.h \
     mytcpsocket.h \
     operatedb.h \

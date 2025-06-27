@@ -1,6 +1,8 @@
 #include "operatedb.h"
 
 
+#include "dbconnectionpool.h"
+
 #include <QSqlError>
 #include <QDebug>
 #include <QSqlQuery>
@@ -12,7 +14,7 @@ OperateDB &OperateDB::getInstance()
 
 OperateDB::~OperateDB()
 {
-    m_db.close();//采用sql连接池管理时无需手动关闭
+    //采用sql连接池管理时无需手动关闭
 }
 
 OperateDB::OperateDB(QObject *parent)
@@ -25,26 +27,35 @@ OperateDB::OperateDB(QObject *parent)
     // }
 
     //通过静态函数构造一个m_db,在析构函数中自动关闭
-    m_db = QSqlDatabase::addDatabase("QMYSQL");//参数：驱动名
+    // m_db = QSqlDatabase::addDatabase("QMYSQL");//参数：驱动名
+    DBConnectionPool::getInstance().setDatabaseParam(
+        "localhost",
+        "qtprogram",
+        "root",
+        "2396573637",
+        3306
+        );
+    DBConnectionPool::getInstance().setPoolParam(5,20,30000);
+    DBConnectionPool::getInstance().setHeartbeatParam(6000);
 }
 
-void OperateDB::Connect(){
+// void OperateDB::Connect(){
 
-    //配置并连接
-    m_db.setHostName("localhost");      //主机名称
-    m_db.setPort(3306);                 //端口号
-    m_db.setDatabaseName("qtprogram");  //数据库名称
-    m_db.setUserName("root");           //用户名
-    m_db.setPassword("2396573637");     //密码
+//     //配置并连接
+//     m_db.setHostName("localhost");      //主机名称
+//     m_db.setPort(3306);                 //端口号
+//     m_db.setDatabaseName("qtprogram");  //数据库名称
+//     m_db.setUserName("root");           //用户名
+//     m_db.setPassword("2396573637");     //密码
 
-    if(m_db.open()){
-        qDebug()<<"OperateDB(Connect):\n\t open/connect the database successfully";
-    }else{
-        //输出报错信息需要头文件QSqlError
-        qDebug()<<"OperateDB(Connect):\n\t open/connect the database error: "<<m_db.lastError().text();
-    }
+//     if(m_db.open()){
+//         qDebug()<<"OperateDB(Connect):\n\t open/connect the database successfully";
+//     }else{
+//         //输出报错信息需要头文件QSqlError
+//         qDebug()<<"OperateDB(Connect):\n\t open/connect the database error: "<<m_db.lastError().text();
+//     }
 
-}
+// }
 
 int OperateDB::handleRegist(const char *uid, const char *pwd)
 {
@@ -54,13 +65,18 @@ int OperateDB::handleRegist(const char *uid, const char *pwd)
     // QString sqlStr;//sql语句
     // sqlStr = QString("select * from user_info where name = '%1';").arg(uid);
 
-    QSqlQuery q(m_db);//执行对象
+    QSqlDatabase db = getDatabaseConnection();
+    if(!db.isOpen())return 0;
+
+    QSqlQuery q(db);//执行对象
     q.prepare("select * from user_info where name = :name");
     q.bindValue(":name",QString::fromUtf8(uid));
     if(!q.exec()){
+        DBConnectionPool::getInstance().releaseConnection(db.connectionName());
         return 0;//QString("sql execute error(select)");
     }
     if(q.next()){
+        DBConnectionPool::getInstance().releaseConnection(db.connectionName());
         return -1;//QString("name have already existed");
     }
 
@@ -69,8 +85,10 @@ int OperateDB::handleRegist(const char *uid, const char *pwd)
     q.bindValue(":name",QString::fromUtf8(uid));
     q.bindValue(":pwd",QString::fromUtf8(pwd));
     if(!q.exec()){
+        DBConnectionPool::getInstance().releaseConnection(db.connectionName());
         return 0;//QString("sql execute error(insert)");
     }
+    DBConnectionPool::getInstance().releaseConnection(db.connectionName());
     return 1;//QString("register successfully");
 }
 
@@ -83,14 +101,19 @@ int OperateDB::handleLogin(const char *uid, const char *pwd)
     // QString sqlStr;//sql语句
     // sqlStr = QString("select * from user_info where name = '%1' and pwd = '%2';").arg(uid,pwd);
 
-    QSqlQuery q(m_db);//执行对象
+    QSqlDatabase db = getDatabaseConnection();
+    if(!db.isOpen())return 0;
+
+    QSqlQuery q(db);//执行对象
     q.prepare("select * from user_info where name = :name and pwd = :pwd");
     q.bindValue(":name",QString::fromUtf8(uid));
     q.bindValue(":pwd",QString::fromUtf8(pwd));
     if(!q.exec()){
+        DBConnectionPool::getInstance().releaseConnection(db.connectionName());
         return 0;//QString("sql execute error(select)");
     }
     if(!q.next()){
+        DBConnectionPool::getInstance().releaseConnection(db.connectionName());
         return -1;//QString("username or password is error");
     }
 
@@ -100,8 +123,10 @@ int OperateDB::handleLogin(const char *uid, const char *pwd)
     q.prepare("update user_info set online = '1' where name = :name");
     q.bindValue(":name", QString::fromUtf8(uid));
     if(!q.exec()){
+        DBConnectionPool::getInstance().releaseConnection(db.connectionName());
         return 0;//QString("sql excute error(update)");
     }
+    DBConnectionPool::getInstance().releaseConnection(db.connectionName());
     return 1;//QString("login successfully");
 }
 
@@ -112,18 +137,24 @@ int OperateDB::handleFindUser(const char *uid)
     // QString sqlStr = QString("select online from user_info where name='%1'").arg(uid);
     //qDebug() <<"sql: 查询用户是否在线"<<sqlStr;
 
-    QSqlQuery q(m_db);
+    QSqlDatabase db = getDatabaseConnection();
+    if(!db.isOpen())return 0;
+
+    QSqlQuery q(db);//执行对象
 
     q.prepare("select online from user_info where name = :name");
     q.bindValue(":name", QString::fromUtf8(uid));
     if(!q.exec()){
+        DBConnectionPool::getInstance().releaseConnection(db.connectionName());
         return 0;//"查找失败";
     }
     if(q.next()){
         int ret = q.value(0).toInt();
+        DBConnectionPool::getInstance().releaseConnection(db.connectionName());
         if(ret==0)return -1;//"该用户不在线";
         else return 1;//"该用户在线";
     }
+    DBConnectionPool::getInstance().releaseConnection(db.connectionName());
     return -2;//"该用户不存在";
 }
 
@@ -133,7 +164,10 @@ int OperateDB::handleAddFriend(const char *curName, const char *tarName)
     if(QString(curName) == QString(tarName)) return -1;
 
 
-    QSqlQuery q(m_db);
+    QSqlDatabase db = getDatabaseConnection();
+    if(!db.isOpen())return 0;
+
+    QSqlQuery q(db);//执行对象
     // 预处理：检查是否已是好友
     q.prepare(R"(
         SELECT * FROM friend
@@ -147,15 +181,26 @@ int OperateDB::handleAddFriend(const char *curName, const char *tarName)
     )");
     q.bindValue(":curName", QString::fromUtf8(curName));
     q.bindValue(":tarName", QString::fromUtf8(tarName));
-    if(!q.exec()) return 0;
-    if(q.next()) return -1; // 已是好友
-
+    if(!q.exec()){
+        DBConnectionPool::getInstance().releaseConnection(db.connectionName());
+        return 0;
+    }
+    if(q.next()){
+        DBConnectionPool::getInstance().releaseConnection(db.connectionName());
+        return -1; // 已是好友
+    }
     // 预处理：检查目标用户是否在线
     q.prepare("SELECT online FROM user_info WHERE name = :tarName");
     q.bindValue(":tarName", QString::fromUtf8(tarName));
-    if(!q.exec()) return 0;
-    if(!q.next() || !q.value(0).toInt()) return -2; // 用户不存在或不在线
-
+    if(!q.exec()){
+        DBConnectionPool::getInstance().releaseConnection(db.connectionName());
+        return 0;
+    }
+    if(!q.next() || !q.value(0).toInt()){
+        DBConnectionPool::getInstance().releaseConnection(db.connectionName());
+        return -2; // 用户不存在或不在线
+    }
+    DBConnectionPool::getInstance().releaseConnection(db.connectionName());
     return 1; // 添加请求成功
 }
 
@@ -171,7 +216,10 @@ bool OperateDB::handleAgreeAdd(const char *curName, const char *tarName)
     //             or (u1.name='%2' and u2.name='%1')
     // )").arg(curName,tarName);
 
-    QSqlQuery q(m_db);
+    QSqlDatabase db = getDatabaseConnection();
+    if(!db.isOpen())return 0;
+
+    QSqlQuery q(db);//执行对象
     q.prepare(R"(
         insert into friend(user_id,friend_id)
             select u1.id, u2.id
@@ -181,7 +229,10 @@ bool OperateDB::handleAgreeAdd(const char *curName, const char *tarName)
     )");
     q.bindValue(":fname",QString::fromUtf8(curName));
     q.bindValue(":sname",QString::fromUtf8(tarName));
-    return q.exec();
+
+    bool ret = q.exec();
+    DBConnectionPool::getInstance().releaseConnection(db.connectionName());
+    return ret;
 }
 
 void OperateDB::handleOffline(const char *uid)
@@ -190,18 +241,24 @@ void OperateDB::handleOffline(const char *uid)
     // QString sql = QString("update user_info set online='0' where name = '%1'").arg(uid);
     // QSqlQuery().exec(sql);
 
-    QSqlQuery q(m_db);
+    QSqlDatabase db = getDatabaseConnection();
+    QSqlQuery q(db);
     q.prepare("update user_info set online='0' where name = :name");
     q.bindValue(":name",QString::fromUtf8(uid));
     q.exec();//无需返回值，离线操作允许失败
     qDebug()<<"sql: 用户"+QString(uid)+"已下线";
+
+    DBConnectionPool::getInstance().releaseConnection(db.connectionName());
 }
 
 QStringList OperateDB::handleGetFriendList(const char *uid)
 {
     QStringList result;
     if(uid==nullptr)return result;
-    QSqlQuery q(m_db);
+    QSqlDatabase db = getDatabaseConnection();
+    if(!db.isOpen())return result;
+
+    QSqlQuery q(db);//执行对象
     q.prepare(R"(
                 select name from user_info
                 where id in(
@@ -217,6 +274,7 @@ QStringList OperateDB::handleGetFriendList(const char *uid)
     while(q.next()){
         result.append(q.value(0).toString());
     }
+    DBConnectionPool::getInstance().releaseConnection(db.connectionName());
     return result;
 }
 
@@ -260,7 +318,10 @@ int OperateDB::handleDelFriend(const char* curName, const char* tarName)
     if (curName == nullptr || tarName == nullptr) return 0;
 
 
-    QSqlQuery q(m_db);
+    QSqlDatabase db = getDatabaseConnection();
+    if(!db.isOpen())return 0;
+
+    QSqlQuery q(db);//执行对象
 
     // 检查是否是好友
     q.prepare(R"(
@@ -276,9 +337,11 @@ int OperateDB::handleDelFriend(const char* curName, const char* tarName)
     q.bindValue(":curName", QString::fromUtf8(curName));
     q.bindValue(":tarName", QString::fromUtf8(tarName));
     if (!q.exec()) {
+        DBConnectionPool::getInstance().releaseConnection(db.connectionName());
         return 0;
     }
     if (!q.next()) {
+        DBConnectionPool::getInstance().releaseConnection(db.connectionName());
         return -1; // 不是好友
     }
 
@@ -296,8 +359,16 @@ int OperateDB::handleDelFriend(const char* curName, const char* tarName)
     q.bindValue(":curName", QString::fromUtf8(curName));
     q.bindValue(":tarName", QString::fromUtf8(tarName));
     if (!q.exec()) {
+        DBConnectionPool::getInstance().releaseConnection(db.connectionName());
         return 0;
     }
-
+    DBConnectionPool::getInstance().releaseConnection(db.connectionName());
     return 1;
 }
+
+QSqlDatabase OperateDB::getDatabaseConnection()
+{
+    return DBConnectionPool::getInstance().openConnection();
+}
+
+

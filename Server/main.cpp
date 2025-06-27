@@ -6,7 +6,7 @@
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
-    OperateDB::getInstance().Connect();
+    OperateDB::getInstance();
     Server::getInstance();
     return a.exec();
 }
